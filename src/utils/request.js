@@ -3,7 +3,8 @@ import store from '@/store'
 import storage from 'store'
 import notification from 'ant-design-vue/es/notification'
 import { VueAxios } from './axios'
-import { ACCESS_TOKEN } from '@/store/mutation-types'
+import { ACCESS_TOKEN, REFRESH_TOKEN } from '@/store/mutation-types'
+import router from '../router/index'
 
 // 创建 axios 实例
 const request = axios.create({
@@ -24,18 +25,34 @@ const errorHandler = (error) => {
         description: data.message
       })
     }
-    if (error.response.status === 401 && !(data.result && data.result.isLogin)) {
-      notification.error({
-        message: 'Unauthorized',
-        description: 'Authorization verification failed'
+    if (error.response.status === 401) {
+      // 调用refreshToken接口
+      // 如果refreshToken接口返回错误，登出，重定向到登录页面
+      const refreshTokenText = storage.get(REFRESH_TOKEN)
+
+      return refreshToken({ refreshToken: refreshTokenText }).then((res) => {
+        if (res.code !== 200) {
+          notification.error({
+            message: 'Unauthorized',
+            description: 'Authorization verification failed'
+          })
+          if (token) {
+            store.dispatch('Logout').then(() => {
+              setTimeout(() => {
+                router.replace({
+                  path: '/user/login?',
+                  query: { }
+                })
+              }, 1500)
+            })
+          }
+        } else {
+          store.dispatch('RefreshToken', res.result)
+          error.config.__isRetryRequest = true
+          error.config.headers.Authorization = 'Bearer ' + res.result.token
+          return request(error.config)
+        }
       })
-      if (token) {
-        store.dispatch('Logout').then(() => {
-          setTimeout(() => {
-            window.location.reload()
-          }, 1500)
-        })
-      }
     }
   }
   return Promise.reject(error)
@@ -47,7 +64,7 @@ request.interceptors.request.use(config => {
   // 如果 token 存在
   // 让每个请求携带自定义 token 请根据实际情况自行修改
   if (token) {
-    config.headers['Access-Token'] = token
+    config.headers['Authorization'] = 'Bearer ' + token
   }
   return config
 }, errorHandler)
@@ -69,4 +86,8 @@ export default request
 export {
   installer as VueAxios,
   request as axios
+}
+
+export const refreshToken = params => {
+  return axios.post(`${process.env.VUE_APP_API_BASE_URL}/auth/token/refresh`, params).then(res => res.data)
 }

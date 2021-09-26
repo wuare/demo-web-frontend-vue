@@ -1,6 +1,6 @@
 import storage from 'store'
 import { login, getInfo, logout } from '@/api/login'
-import { ACCESS_TOKEN } from '@/store/mutation-types'
+import { ACCESS_TOKEN, REFRESH_TOKEN } from '@/store/mutation-types'
 import { welcome } from '@/utils/util'
 
 const user = {
@@ -10,12 +10,16 @@ const user = {
     welcome: '',
     avatar: '',
     roles: [],
-    info: {}
+    info: {},
+    refreshToken: ''
   },
 
   mutations: {
     SET_TOKEN: (state, token) => {
       state.token = token
+    },
+    SET_REFRESH_TOKEN: (state, refreshToken) => {
+      state.refreshToken = refreshToken
     },
     SET_NAME: (state, { name, welcome }) => {
       state.name = name
@@ -38,9 +42,13 @@ const user = {
       return new Promise((resolve, reject) => {
         login(userInfo).then(response => {
           const result = response.result
-          storage.set(ACCESS_TOKEN, result.token, 7 * 24 * 60 * 60 * 1000)
-          commit('SET_TOKEN', result.token)
-          resolve()
+          if (response.code === 200) {
+            storage.set(ACCESS_TOKEN, result.token, 7 * 24 * 60 * 60 * 1000)
+            storage.set(REFRESH_TOKEN, result.refreshToken, 7 * 24 * 60 * 60 * 1000)
+            commit('SET_TOKEN', result.token)
+            commit('SET_REFRESH_TOKEN', result.refreshToken)
+          }
+          resolve(response)
         }).catch(error => {
           reject(error)
         })
@@ -84,14 +92,26 @@ const user = {
       return new Promise((resolve) => {
         logout(state.token).then(() => {
           commit('SET_TOKEN', '')
+          commit('SET_REFRESH_TOKEN', '')
           commit('SET_ROLES', [])
           storage.remove(ACCESS_TOKEN)
+          storage.remove(REFRESH_TOKEN)
           resolve()
         }).catch((err) => {
           console.log('logout fail:', err)
           // resolve()
         }).finally(() => {
         })
+      })
+    },
+
+    RefreshToken ({ commit }, result) {
+      return new Promise((resolve) => {
+        storage.set(ACCESS_TOKEN, result.token, 7 * 24 * 60 * 60 * 1000)
+        storage.set(REFRESH_TOKEN, result.refreshToken, 7 * 24 * 60 * 60 * 1000)
+        commit('SET_TOKEN', result.token)
+        commit('SET_REFRESH_TOKEN', result.refreshToken)
+        resolve()
       })
     }
 
